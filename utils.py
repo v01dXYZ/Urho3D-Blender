@@ -13,10 +13,16 @@ import array
 import logging
 import bpy
 import re
+import queue
+import json
+
+# queue actions
+execution_queue = queue.Queue()
 
 log = logging.getLogger("ExportLogger")
 
-
+initialized = False
+reloadScreenshotFlag = False
 
 def enum(**enums):
     return type('Enum', (), enums)
@@ -318,3 +324,121 @@ def getObjectWithID(id):
         if obj.ID == id:
             return obj
     return None
+
+# This function can savely be called in another thread.
+# The function will be executed when the timer runs the next time.
+def run_in_main_thread(function):
+    execution_queue.put(function)
+
+requests2Engine = None
+requestsFromEngine = {}
+runtime2blender = None
+blender2runtime = None
+
+
+def execute_queued_functions():
+    print("TIMER")
+    while not execution_queue.empty():
+        function = execution_queue.get()
+        function()
+
+    if requests2Engine:
+        sendRequests2Engine()
+
+    if runtime2blender and runtime2blender!="" and os.path.isfile(runtime2blender):
+        with open(runtime2blender) as json_file:  
+            data = json.load(json_file)
+            action = data["action"]
+            print("runtime2blender-action:%s" % data["action"])
+
+            if action=="reload_screenshot":
+                bpy.data.images["Screenshot.png"].reload()
+                os.remove(runtime2blender)
+                a3d = getArea3D()
+                a3d.tag_redraw()
+                print("TAGGED REDRAW")
+
+                
+
+
+    return 1.0 
+
+
+def sendRequests2Engine():
+    global requests2Engine
+    if not requests2Engine:
+        return
+    if not blender2runtime:
+        return
+
+    if os.path.isfile(blender2runtime):
+        return
+
+    j = json.dumps(requests2Engine, indent=4)
+    f = open(blender2runtime, 'w')
+    f.write(j)
+    f.close()
+    print("CREATED runtime-request-FILE:%s" %blender2runtime)
+    requests2Engine=None
+
+def queueRequestForRuntime(type,requestData):
+    global requests2Engine
+    if not requests2Engine:
+        requests2Engine={}
+    requests2Engine[type]=requestData
+
+def vec2dict(vec):
+    result={}
+    try:
+        result["x"]=vec.x
+        result["y"]=vec.y
+        result["z"]=vec.z
+        result["w"]=vec.w
+    except:
+        pass
+    return result
+
+
+def getArea3D():
+    for area in bpy.data.window_managers['WinMan'].windows[0].screen.areas:
+        if area.type == "VIEW_3D":
+            break
+    
+    if not area or area.type != "VIEW_3D":
+        return None
+    return area    
+
+def getRegion3D():
+
+    area = getArea3D()
+    if area:
+        return area.spaces.active.region_3d
+    else:
+        return None
+
+def sendUpdateView2Runtime():
+    region3d = getRegion3D()
+
+    view_matrix = region3d.view_matrix
+    viewMatrixDect = []
+    for vector in view_matrix:
+        viewMatrixDect.append(vec2dict(vector))
+    queueRequestForRuntime("view_matrix",viewMatrixDect)
+
+    matrix = region3d.perspective_matrix 
+    #@ area.spaces.active.region_3d.view_matrix.inverted()
+    matrixDect = []
+    for vector in matrix:
+        matrixDect.append(vec2dict(vector))
+
+    queueRequestForRuntime("matrix",matrixDect)
+    
+    global blender2runtime
+    global runtime2blender
+    blender2runtime = bpy.context.scene.urho_exportsettings.screenshotPath
+    if blender2runtime!="":
+        runtime2blender=blender2runtime+"/runtime2blender.json"
+        blender2runtime= blender2runtime+'/req2engine.json'
+        print ("SETPATH %s" % blender2runtime)
+    
+    

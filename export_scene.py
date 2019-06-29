@@ -73,6 +73,8 @@ class UrhoSceneModel:
         self.objectName = None
         # Parent Blender object name
         self.parentObjectName = None
+        # Name of the bone this model is parented to
+        self.boneParentName = None
         # Model type
         self.type = None
         # List of UrhoSceneMaterial
@@ -91,11 +93,21 @@ class UrhoSceneModel:
         self.blenderObjectName = objectName
         object = bpy.data.objects[objectName]
         if objectName:
-
+            parentObject = None
             transObject = object
             if object.parent and object.parent.type=="ARMATURE":
                 print("FOUND PARENT Armature!")
-                transObject = object.parent
+                if object.parent_type=="BONE":
+                    self.boneParentName = object.parent_bone
+                    print("FOUND BONE:%s" %self.boneParentName)
+
+                    if len(object.parent.children)>0:
+                        transObject = object.parent.children[0]
+                        parentObject = transObject
+
+                else:
+                    transObject = object.parent
+                    parentObject = transObject.parent
 
             # Get the local matrix (relative to parent)
             objMatrix = transObject.matrix_local
@@ -115,11 +127,14 @@ class UrhoSceneModel:
             self.scale = Vector((scale.x, scale.z, scale.y))
 
             # Get parent object
-            parentObject = transObject.parent
+            
             if parentObject :
                 self.parentObjectName = parentObject.name
 
-        if len(uModel.bones) > 0 or len(uModel.morphs) > 0:
+
+        if self.boneParentName:
+            self.type = "StaticModel"
+        elif len(uModel.bones) > 0 or len(uModel.morphs) > 0:
             self.type = "AnimatedModel"
         elif object.lodsetID>0:
             # this object has an lodset as mesh
@@ -597,6 +612,21 @@ def AddGroupInstanceComponent(a,m,groupFilename,offset,modelNode):
     
     return m
 
+def AddBoneParent(a,m,boneParentName,modelNode):
+    
+    attribID = m
+    a["{:d}".format(m)] = ET.SubElement(a[modelNode], "component")
+    a["{:d}".format(m)].set("type", "ParentBone")
+    a["{:d}".format(m)].set("id", str(m))
+    
+    m += 1
+
+    a["{:d}".format(m)] = ET.SubElement(a["{:d}".format(attribID)], "attribute")
+    a["{:d}".format(m)].set("name", "boneName")
+    a["{:d}".format(m)].set("value", boneParentName)
+    
+    return m    
+
 ## add userdata-attributes 
 def ExportUserdata(a,m,obj,modelNode,includeCollectionTags=True):
     print("EXPORT USERDATA")
@@ -814,6 +844,8 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
 
     # what object in what collection
     groupObjMapping = {}
+    parentedToBones = []
+
     # list to contain xml-data for each collection to be exported
     groups=[]
     # list of collections that get instanced in the scene
@@ -962,7 +994,8 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
                     # create root for the group object
                     a[groupName].append(a[modelNode])
                 #a[modelNode] = ET.SubElement(a[groupName],'node') 
-
+        if (uSceneModel.boneParentName):
+            print("BONEPARENT:%s parent:%s" % (uSceneModel.boneParentName,uSceneModel.parentObjectName))
         a[modelNode].set("id", "{:d}".format(k))
 
         a["{:d}".format(m)] = ET.SubElement(a[modelNode], "attribute")
@@ -983,7 +1016,8 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
             a["{:d}".format(m)].set("name", "Scale")
             a["{:d}".format(m)].set("value", Vector3ToString(uSceneModel.scale))
             m += 1
-        
+
+       
         if (sOptions.exportUserdata or sOptions.exportObjectCollectionAsTag) and obj:
             m = ExportUserdata(a,m,obj,modelNode,sOptions.exportObjectCollectionAsTag)
         
@@ -991,6 +1025,8 @@ def UrhoExportScene(context, uScene, sOptions, fOptions):
             grp = obj.instance_collection
             grpFilename = sOptions.objectsPath+"/"+GetGroupName(grp.name)+".xml"
             m = AddGroupInstanceComponent(a,m,grpFilename,grp.instance_offset,modelNode)
+        if uSceneModel.boneParentName:
+            m = AddBoneParent(a,m,uSceneModel.boneParentName,modelNode)
 
 
         if not isEmpty:
