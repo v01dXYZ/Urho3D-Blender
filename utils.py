@@ -14,7 +14,7 @@ import logging
 import bpy
 import re
 import queue
-import json
+import json,math
 
 # queue actions
 execution_queue = queue.Queue()
@@ -335,9 +335,9 @@ requestsFromEngine = {}
 runtime2blender = None
 blender2runtime = None
 
-
+# timered function
 def execute_queued_functions():
-    print("TIMER")
+    #print("TIMER")
     while not execution_queue.empty():
         function = execution_queue.get()
         function()
@@ -360,8 +360,8 @@ def execute_queued_functions():
 
                 
 
-
-    return 1.0 
+    # amount of time to wait till next call
+    return 1
 
 
 def sendRequests2Engine():
@@ -387,13 +387,20 @@ def queueRequestForRuntime(type,requestData):
         requests2Engine={}
     requests2Engine[type]=requestData
 
-def vec2dict(vec):
+def vec2dict(vec,convToDeg=False):
     result={}
     try:
-        result["x"]=vec.x
-        result["y"]=vec.y
-        result["z"]=vec.z
-        result["w"]=vec.w
+        if not convToDeg:
+            result["x"]=vec.x
+            result["y"]=vec.y
+            result["z"]=vec.z
+            result["w"]=vec.w
+        else:
+            result["x"]=math.degrees(vec.x)
+            result["y"]=math.degrees(vec.y)
+            result["z"]=math.degrees(vec.z)
+            result["w"]=math.degrees(vec.w)
+
     except:
         pass
     return result
@@ -418,12 +425,18 @@ def getRegion3D():
 
 def sendUpdateView2Runtime():
     region3d = getRegion3D()
-
+    area3d = getArea3D()
+    
     view_matrix = region3d.view_matrix
     viewMatrixDect = []
     for vector in view_matrix:
         viewMatrixDect.append(vec2dict(vector))
     queueRequestForRuntime("view_matrix",viewMatrixDect)
+
+    queueRequestForRuntime("view_width",area3d.width)
+    queueRequestForRuntime("view_height",area3d.height)
+
+    #print(json.dumps(viewMatrixDect,indent=4))
 
     matrix = region3d.perspective_matrix 
     #@ area.spaces.active.region_3d.view_matrix.inverted()
@@ -431,7 +444,8 @@ def sendUpdateView2Runtime():
     for vector in matrix:
         matrixDect.append(vec2dict(vector))
 
-    queueRequestForRuntime("matrix",matrixDect)
+    queueRequestForRuntime("perspective_matrix",matrixDect)
+
     
     global blender2runtime
     global runtime2blender

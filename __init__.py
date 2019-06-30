@@ -246,7 +246,8 @@ class CustomRenderEngine(bpy.types.RenderEngine):
         bgl.glDisable(bgl.GL_BLEND)
 
         print("1")
-        utils.sendUpdateView2Runtime()        
+        if bpy.context.scene.urho_exportsettings.sendDataToRuntime:
+            utils.sendUpdateView2Runtime()        
 
 
 class CustomDrawData:
@@ -1212,7 +1213,12 @@ class UrhoExportSettings(bpy.types.PropertyGroup):
                     description="The screenshot emitted by the runtime",
                     maxlen = 512,
                     default = "",
-                    subtype='FILE_PATH')                       
+                    subtype='FILE_PATH')
+
+    sendDataToRuntime : BoolProperty(
+            name = "sendDataToRuntime",
+            description = "send data to runtime",
+            default = True)                      
 
 
     # --- Output settings ---
@@ -1988,6 +1994,10 @@ class UrhoExportRenderPanel(bpy.types.Panel):
             if bpy.context.scene.render.engine=="URHO3DRenderer":
                 row = box.row()
                 row.prop(settings,"screenshotPath")  
+
+                row = box.row()
+                row.prop(settings,"sendDataToRuntime")  
+                
             row = box.row()
             row.prop(settings,"runtimeBlocking")
             row = box.row()
