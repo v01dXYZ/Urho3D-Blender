@@ -16,12 +16,21 @@ import re
 import queue
 import json,math
 
+def IsBConnectAddonAvailable():
+    bconnectAvailable = "addon_blender_connect" in  bpy.context.preferences.addons.keys()
+    return bconnectAvailable
+
+if IsBConnectAddonAvailable():
+    import  addon_blender_connect
+    from addon_blender_connect.BConnectNetwork import Publish,StartNetwork,NetworkRunning,AddListener
+
 # queue actions
 execution_queue = queue.Queue()
 
 log = logging.getLogger("ExportLogger")
 
 initialized = False
+networkInitialized = False
 reloadScreenshotFlag = False
 
 def enum(**enums):
@@ -305,6 +314,15 @@ def IsJsonNodeAddonAvailable():
     jsonNodetreeAvailable = "addon_jsonnodetree" in bpy.context.preferences.addons.keys()
     return jsonNodetreeAvailable
 
+
+
+def Send(topic,data):
+    if not NetworkRunning():
+        StartNetwork()
+    
+    Publish(topic,data)
+    print("SENT: %s %s" % (topic,data))
+
 def getLodSetWithID(id,returnIdx=False):
     cnt=0
     for lodset in bpy.data.worlds[0].lodsets:
@@ -343,6 +361,7 @@ def execute_queued_functions():
         function()
 
     if requests2Engine:
+        print("FOUND REQUESTS!!")
         sendRequests2Engine()
 
     if runtime2blender and runtime2blender!="" and os.path.isfile(runtime2blender):
@@ -366,19 +385,23 @@ def execute_queued_functions():
 
 def sendRequests2Engine():
     global requests2Engine
-    if not requests2Engine:
-        return
-    if not blender2runtime:
-        return
+    print("1")
+#    if not requests2Engine:
+#        return
+#    if not blender2runtime:
+#        return
 
-    if os.path.isfile(blender2runtime):
-        return
+#    if os.path.isfile(blender2runtime):
+#        return
 
     j = json.dumps(requests2Engine, indent=4)
-    f = open(blender2runtime, 'w')
-    f.write(j)
-    f.close()
-    print("CREATED runtime-request-FILE:%s" %blender2runtime)
+    
+    Send("runtime",str.encode(j))
+
+#    f = open(blender2runtime, 'w')
+#    f.write(j)
+#    f.close()
+#    print("CREATED runtime-request-FILE:%s" %blender2runtime)
     requests2Engine=None
 
 def queueRequestForRuntime(type,requestData):
@@ -386,6 +409,7 @@ def queueRequestForRuntime(type,requestData):
     if not requests2Engine:
         requests2Engine={}
     requests2Engine[type]=requestData
+    print("queue request:%s"  %type)
 
 def vec2dict(vec,convToDeg=False):
     result={}
@@ -424,9 +448,11 @@ def getRegion3D():
         return None
 
 def sendUpdateView2Runtime():
+    print("2")
     region3d = getRegion3D()
     area3d = getArea3D()
     
+    print("2")
     view_matrix = region3d.view_matrix
     viewMatrixDect = []
     for vector in view_matrix:
@@ -447,12 +473,26 @@ def sendUpdateView2Runtime():
     queueRequestForRuntime("perspective_matrix",matrixDect)
 
     
+    print("23")
     global blender2runtime
     global runtime2blender
     blender2runtime = bpy.context.scene.urho_exportsettings.screenshotPath
     if blender2runtime!="":
+        print("23")
         runtime2blender=blender2runtime+"/runtime2blender.json"
         blender2runtime= blender2runtime+'/req2engine.json'
         print ("SETPATH %s" % blender2runtime)
     
-    
+def BConnectListener(topic,subtype,data):
+    print("TOPIC:%s subtype:%s" % (topic,subtype))
+
+def InitNetwork():
+    global networkInitialized
+    if networkInitialized:
+        return
+
+    if not NetworkRunning():
+        StartNetwork()
+    AddListener(b"blender",BConnectListener)    
+    networkInitialized = True
+

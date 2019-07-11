@@ -46,7 +46,7 @@ from .decompose import TOptions, Scan
 from .export_urho import UrhoExportData, UrhoExportOptions, UrhoWriteModel, UrhoWriteAnimation, \
                          UrhoWriteTriggers, UrhoExport
 from .export_scene import SOptions, UrhoScene, UrhoExportScene, UrhoWriteMaterialTrees
-from .utils import PathType, FOptions, GetFilepath, CheckFilepath, ErrorsMem,IsJsonNodeAddonAvailable,getLodSetWithID,getObjectWithID,run_in_main_thread,execute_queued_functions,initialized
+from .utils import PathType, FOptions, GetFilepath, CheckFilepath, ErrorsMem,IsJsonNodeAddonAvailable,IsBConnectAddonAvailable, getLodSetWithID,getObjectWithID,run_in_main_thread,execute_queued_functions,initialized
 if DEBUG: from .testing import PrintUrhoData, PrintAll
 
 import os
@@ -61,6 +61,9 @@ tempObjects = []
 
 if IsJsonNodeAddonAvailable():
     import JSONNodetreeUtils    
+
+
+    
 
 import bpy
 from bpy.props import StringProperty, BoolProperty, EnumProperty, FloatProperty, IntProperty
@@ -184,36 +187,37 @@ class CustomRenderEngine(bpy.types.RenderEngine):
     # thread will be started to do the work while keeping Blender responsive.
     def view_update(self, context, depsgraph):
         print("VIEW_UPDATE")
-        region = context.region
-        view3d = context.space_data
-        scene = depsgraph.scene
+        
+        # region = context.region
+        # view3d = context.space_data
+        # scene = depsgraph.scene
 
-        # Get viewport dimensions
-        dimensions = region.width, region.height
+        # # Get viewport dimensions
+        # dimensions = region.width, region.height
 
-        if not self.scene_data:
-            # First time initialization
-            self.scene_data = []
-            first_time = True
+        # if not self.scene_data:
+        #     # First time initialization
+        #     self.scene_data = []
+        #     first_time = True
 
-            # Loop over all datablocks used in the scene.
-            for datablock in depsgraph.ids:
-                pass
-        else:
-            first_time = False
+        #     # Loop over all datablocks used in the scene.
+        #     for datablock in depsgraph.ids:
+        #         pass
+        # else:
+        #     first_time = False
 
-            # Test which datablocks changed
-            for update in depsgraph.updates:
-                print("Datablock updated: ", update.id.name)
+        #     # Test which datablocks changed
+        #     for update in depsgraph.updates:
+        #         print("Datablock updated: ", update.id.name)
 
-            # Test if any material was added, removed or changed.
-            if depsgraph.id_type_updated('MATERIAL'):
-                print("Materials updated")
+        #     # Test if any material was added, removed or changed.
+        #     if depsgraph.id_type_updated('MATERIAL'):
+        #         print("Materials updated")
 
-        # Loop over all object instances in the scene.
-        if first_time or depsgraph.id_type_updated('OBJECT'):
-            for instance in depsgraph.object_instances:
-                pass
+        # # Loop over all object instances in the scene.
+        # if first_time or depsgraph.id_type_updated('OBJECT'):
+        #     for instance in depsgraph.object_instances:
+        #         pass
 
 
 
@@ -246,8 +250,8 @@ class CustomRenderEngine(bpy.types.RenderEngine):
         bgl.glDisable(bgl.GL_BLEND)
 
         print("1")
-        if bpy.context.scene.urho_exportsettings.sendDataToRuntime:
-            utils.sendUpdateView2Runtime()        
+        #if bpy.context.scene.urho_exportsettings.sendDataToRuntime:
+        utils.sendUpdateView2Runtime()        
 
 
 class CustomDrawData:
@@ -2446,6 +2450,7 @@ def PostSave(dummy):
 addon_keymaps = []
 
 def register():
+    utils.InitNetwork()
         # property hooks:
     def updateMaterialTreeName(self,ctx):
         if self.materialTreeId!=-1:
@@ -2818,8 +2823,8 @@ def ExecuteUrhoExport(context):
     global logList
 
     # Check Blender version
-    if bpy.app.version < (2, 70, 0):
-        log.error( "Blender version 2.70 or later is required" )
+    if bpy.app.version < (2, 80, 0):
+        log.error( "Blender version 2.80 or later is required" )
         return False
 
     # Clear log list
