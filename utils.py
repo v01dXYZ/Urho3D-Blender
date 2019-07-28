@@ -15,6 +15,7 @@ import bpy
 import re
 import queue
 import json,math
+import ctypes
 
 def IsBConnectAddonAvailable():
     bconnectAvailable = "addon_blender_connect" in  bpy.context.preferences.addons.keys()
@@ -30,6 +31,7 @@ execution_queue = queue.Queue()
 log = logging.getLogger("ExportLogger")
 
 initialized = False
+pixels = None
 networkInitialized = False
 reloadScreenshotFlag = False
 
@@ -355,8 +357,9 @@ blender2runtime = None
 
 # timered function
 def execute_queued_functions():
-    #print("TIMER")
+    # print("TIMER")
     while not execution_queue.empty():
+        print("DO EXECUTION FUNCTION")
         function = execution_queue.get()
         function()
 
@@ -401,15 +404,7 @@ def sendRequests2Engine():
 #    f = open(blender2runtime, 'w')
 #    f.write(j)
 #    f.close()
-#    print("CREATED runtime-request-FILE:%s" %blender2runtime)
-    requests2Engine=None
-
-def queueRequestForRuntime(type,requestData):
-    global requests2Engine
-    if not requests2Engine:
-        requests2Engine={}
-    requests2Engine[type]=requestData
-    print("queue request:%s"  %type)
+#    print("CREATED runtime-request-FILE:%s" %blender2runtime
 
 def vec2dict(vec,convToDeg=False):
     result={}
@@ -429,6 +424,11 @@ def vec2dict(vec,convToDeg=False):
         pass
     return result
 
+def matrix2dict(matrix,convToDeg=False):
+    resultmatrix=[]
+    for vector in matrix:
+        resultmatrix.append(vec2dict(vector,convToDeg))
+    return resultmatrix
 
 def getArea3D():
     for area in bpy.data.window_managers['WinMan'].windows[0].screen.areas:
@@ -447,44 +447,39 @@ def getRegion3D():
     else:
         return None
 
-def sendUpdateView2Runtime():
-    print("2")
-    region3d = getRegion3D()
-    area3d = getArea3D()
+viewmatrix_old = None
+
+def sendUpdateView(region,area):
+    def call():
+        region3d = area.spaces.active.region_3d
+        view_matrix = matrix2dict(region3d.view_matrix)
+        
+        global viewmatrix_old
+        if viewmatrix_old and viewmatrix_old==view_matrix:
+            print("NO POS CHANGES")
+            return
+        else:
+            print("POS CHANGE")
+            print("old %s" % viewmatrix_old)
+            viewmatrix_old = view_matrix
+
+        perspective_matrix = matrix2dict(region3d.perspective_matrix)
+        data = {
+            'view_matrix' : view_matrix,
+            'perspective_matrix' : perspective_matrix,
+            'view_width' : region.width,
+            'view_height' : region.height
+        }
+        j = str.encode(json.dumps(data, indent=4))
+        Send("blender viewport text",j)
     
-    print("2")
-    view_matrix = region3d.view_matrix
-    viewMatrixDect = []
-    for vector in view_matrix:
-        viewMatrixDect.append(vec2dict(vector))
-    queueRequestForRuntime("view_matrix",viewMatrixDect)
+    return call
 
-    queueRequestForRuntime("view_width",area3d.width)
-    queueRequestForRuntime("view_height",area3d.height)
-
-    #print(json.dumps(viewMatrixDect,indent=4))
-
-    matrix = region3d.perspective_matrix 
-    #@ area.spaces.active.region_3d.view_matrix.inverted()
-    matrixDect = []
-    for vector in matrix:
-        matrixDect.append(vec2dict(vector))
-
-    queueRequestForRuntime("perspective_matrix",matrixDect)
-
-    
-    print("23")
-    global blender2runtime
-    global runtime2blender
-    blender2runtime = bpy.context.scene.urho_exportsettings.screenshotPath
-    if blender2runtime!="":
-        print("23")
-        runtime2blender=blender2runtime+"/runtime2blender.json"
-        blender2runtime= blender2runtime+'/req2engine.json'
-        print ("SETPATH %s" % blender2runtime)
-    
-def BConnectListener(topic,subtype,data):
-    print("TOPIC:%s subtype:%s" % (topic,subtype))
+# def BConnectListener(topic,subtype,data):
+#      print("TOPIC:%s subtype:%s" % (topic,subtype))
+#      print("DATALEN %s" % len(data))
+#      global pixels;
+#      pixels = data
 
 def InitNetwork():
     global networkInitialized
@@ -492,7 +487,8 @@ def InitNetwork():
         return
 
     if not NetworkRunning():
-        StartNetwork()
-    AddListener(b"blender",BConnectListener)    
+        StartNetwork("5559","5560",b"runtime")
+        #AddListener("runtime",BConnectListener)
+
     networkInitialized = True
 
